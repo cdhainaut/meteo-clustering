@@ -13,8 +13,7 @@ import argparse
 from pathlib import Path
 import shutil, tempfile, os
 
-import nomad.numpy as np
-import numpy as npx  # NumPy classique (where/argmin/percentiles)
+import numpy as np  # NumPy classique (where/argmin/percentiles)
 import xarray as xr
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -52,45 +51,45 @@ def export_grib_from_ds(ds: xr.Dataset, out_grib: Path) -> bool:
     return False
 
 
-def dtw_distance(seqA: npx.ndarray, seqB: npx.ndarray) -> float:
+def dtw_distance(seqA: np.ndarray, seqB: np.ndarray) -> float:
     # DTW multivariée (euclid par pas). seq: (L, D)
     La, Lb = seqA.shape[0], seqB.shape[0]
-    D = npx.full((La + 1, Lb + 1), npx.inf, dtype=float)
+    D = np.full((La + 1, Lb + 1), np.inf, dtype=float)
     D[0, 0] = 0.0
     for i in range(1, La + 1):
         ai = seqA[i - 1]
         for j in range(1, Lb + 1):
             bj = seqB[j - 1]
-            cost = float(npx.linalg.norm(ai - bj))
+            cost = float(np.linalg.norm(ai - bj))
             D[i, j] = cost + min(D[i - 1, j], D[i, j - 1], D[i - 1, j - 1])
     return float(D[La, Lb])
 
 
-def medoids_from_distance_matrix(D: npx.ndarray, k: int):
+def medoids_from_distance_matrix(D: np.ndarray, k: int):
     # init farthest-first + simple assign (pas de swaps)
     n = D.shape[0]
-    centers = [int(npx.argmin(D.sum(axis=1)))]
+    centers = [int(np.argmin(D.sum(axis=1)))]
     while len(centers) < k:
-        dmin = npx.min(D[:, centers], axis=1)
-        nxt = int(npx.argmax(dmin))
+        dmin = np.min(D[:, centers], axis=1)
+        nxt = int(np.argmax(dmin))
         if nxt in centers:
             break
         centers.append(nxt)
-    dmin = npx.min(D[:, centers], axis=1)
-    labels = npx.argmin(D[:, centers], axis=1)
-    return npx.array(centers), labels.astype(int)
+    dmin = np.min(D[:, centers], axis=1)
+    labels = np.argmin(D[:, centers], axis=1)
+    return np.array(centers), labels.astype(int)
 
 
-def pam_refine(D: npx.ndarray, centers_in, iters: int = 10):
+def pam_refine(D: np.ndarray, centers_in, iters: int = 10):
     # PAM swaps (améliore les centres)
     centers = list(int(c) for c in centers_in)
 
     def assign_labels(D, centers):
-        return npx.argmin(D[:, centers], axis=1).astype(int)
+        return np.argmin(D[:, centers], axis=1).astype(int)
 
     def total_cost(D, centers, labels):
-        c = npx.array(centers)
-        return float(D[npx.arange(D.shape[0]), c[labels]].sum())
+        c = np.array(centers)
+        return float(D[np.arange(D.shape[0]), c[labels]].sum())
 
     labels = assign_labels(D, centers)
     best_cost = total_cost(D, centers, labels)
@@ -111,7 +110,7 @@ def pam_refine(D: npx.ndarray, centers_in, iters: int = 10):
                     improved = True
         if not improved:
             break
-    return npx.array(centers), labels
+    return np.array(centers), labels
 
 
 # ---------- CLI ----------
@@ -214,7 +213,7 @@ blocks = []
 for v in ds_std.data_vars:
     A = ds_std[v].transpose("time", lat_name, lon_name).values
     blocks.append(A.reshape(A.shape[0], -1))
-X = npx.concatenate(blocks, axis=1)  # (T, F)
+X = np.concatenate(blocks, axis=1)  # (T, F)
 
 # ---------- optional PCA (per-step embedding) ----------
 if args.use_pca:
@@ -223,7 +222,7 @@ if args.use_pca:
     batch = max(1, min(1024, Xc.shape[0]))
     for i in range(0, Xc.shape[0], batch):
         ipca.partial_fit(Xc[i : i + batch])
-    steps_embed = npx.vstack(
+    steps_embed = np.vstack(
         [ipca.transform(Xc[i : i + batch]) for i in range(0, Xc.shape[0], batch)]
     )  # (T, d)
 else:
@@ -250,16 +249,16 @@ seq_list = [steps_embed[s : e + 1] for (s, e) in wins]
 # ---------- clustering de séquences + window scores ----------
 k = args.clusters
 if args.seq_metric == "euclid":
-    seq_flat = npx.array([seq.ravel() for seq in seq_list])  # (N, L*d)
+    seq_flat = np.array([seq.ravel() for seq in seq_list])  # (N, L*d)
     km = MiniBatchKMeans(n_clusters=k, random_state=42, n_init="auto", batch_size=512)
     labels_seq = km.fit_predict(seq_flat)
 
     centers = km.cluster_centers_
-    d_to_center = npx.linalg.norm(seq_flat - centers[labels_seq], axis=1)
+    d_to_center = np.linalg.norm(seq_flat - centers[labels_seq], axis=1)
 
-    window_score = npx.zeros(len(seq_flat), dtype=float)
+    window_score = np.zeros(len(seq_flat), dtype=float)
     for c in range(k):
-        idx = npx.where(labels_seq == c)[0]
+        idx = np.where(labels_seq == c)[0]
         if idx.size == 0:
             continue
         d = d_to_center[idx]
@@ -267,22 +266,22 @@ if args.seq_metric == "euclid":
         if d_max > d_min:
             sc = 1.0 - (d - d_min) / (d_max - d_min)
         else:
-            sc = npx.ones_like(d)
+            sc = np.ones_like(d)
         window_score[idx] = sc
 
     medoid_win_idx = {}
     for c in range(k):
-        idx = npx.where(labels_seq == c)[0]
+        idx = np.where(labels_seq == c)[0]
         if idx.size == 0:
             continue
         centroid = centers[c][None, :]
-        d = npx.linalg.norm(seq_flat[idx] - centroid, axis=1)
-        medoid_win_idx[c] = idx[npx.argmin(d)]
+        d = np.linalg.norm(seq_flat[idx] - centroid, axis=1)
+        medoid_win_idx[c] = idx[np.argmin(d)]
 
 else:
     # DTW: matrice de distances O(N^2)
     N = len(seq_list)
-    D = npx.zeros((N, N), dtype=float)
+    D = np.zeros((N, N), dtype=float)
     for i in range(N):
         for j in range(i + 1, N):
             D[i, j] = D[j, i] = dtw_distance(seq_list[i], seq_list[j])
@@ -292,19 +291,19 @@ else:
     medoid_win_idx = {c: int(centersA[c]) for c in range(k)}
 
     # scores par fenêtre = 1 - (d / max_d_cluster) à leur médonoïde
-    window_score = npx.zeros(N, dtype=float)
+    window_score = np.zeros(N, dtype=float)
     for c in range(k):
-        idx = npx.where(labels_seq == c)[0]
+        idx = np.where(labels_seq == c)[0]
         if idx.size == 0:
             continue
         ref = medoid_win_idx[c]
         ref_vec = seq_list[int(ref)]
-        d = npx.array([dtw_distance(seq_list[i], ref_vec) for i in idx], dtype=float)
+        d = np.array([dtw_distance(seq_list[i], ref_vec) for i in idx], dtype=float)
         d_min, d_max = float(d.min()), float(d.max())
         if d_max > d_min:
             sc = 1.0 - (d - d_min) / (d_max - d_min)
         else:
-            sc = npx.ones_like(d)
+            sc = np.ones_like(d)
         window_score[idx] = sc
 
 # ---------- vote majoritaire + time-score ----------
@@ -314,15 +313,15 @@ for w_i, (s, e) in enumerate(wins):
     for t in range(s, e + 1):
         cover_lists[t].append(c)
 
-labels_time = npx.zeros(len(times), dtype=int)
-time_score = npx.zeros(len(times), dtype=float)  # proportion du gagnant
+labels_time = np.zeros(len(times), dtype=int)
+time_score = np.zeros(len(times), dtype=float)  # proportion du gagnant
 for t, lst in enumerate(cover_lists):
     if len(lst) == 0:
         labels_time[t] = -1
         time_score[t] = 0.0
     else:
-        vals, counts = npx.unique(npx.array(lst), return_counts=True)
-        imax = int(npx.argmax(counts))
+        vals, counts = np.unique(np.array(lst), return_counts=True)
+        imax = int(np.argmax(counts))
         labels_time[t] = int(vals[imax])
         time_score[t] = float(counts[imax]) / float(len(lst))
 
@@ -344,10 +343,10 @@ for c, w_i in sorted(medoid_win_idx.items()):
     )
     sub = ds.isel(time=slice(s, e + 1))
     T = sub.sizes["time"]
-    cluster_vec = npx.full(T, int(c), dtype=int)
-    score_vec = npx.full(T, float(window_score[w_i]), dtype=float)
+    cluster_vec = np.full(T, int(c), dtype=int)
+    score_vec = np.full(T, float(window_score[w_i]), dtype=float)
     cluster_da = xr.DataArray(
-        npx.broadcast_to(
+        np.broadcast_to(
             cluster_vec[:, None, None], (T, sub.sizes[lat_name], sub.sizes[lon_name])
         ),
         coords={"time": sub["time"], lat_name: sub[lat_name], lon_name: sub[lon_name]},
@@ -356,7 +355,7 @@ for c, w_i in sorted(medoid_win_idx.items()):
         attrs={"long_name": "sequence cluster label (window)", "units": "1"},
     )
     score_da = xr.DataArray(
-        npx.broadcast_to(
+        np.broadcast_to(
             score_vec[:, None, None], (T, sub.sizes[lat_name], sub.sizes[lon_name])
         ),
         coords={"time": sub["time"], lat_name: sub[lat_name], lon_name: sub[lon_name]},
@@ -376,7 +375,7 @@ print(f"[OK] Windows GRIB2 (with score): {n_grib}/{len(medoid_win_idx)}")
 
 # ---------- export GRIB: (2) original + labels & time-score ----------
 cluster_da_full = xr.DataArray(
-    npx.broadcast_to(
+    np.broadcast_to(
         labels_time[:, None, None], (len(times), ds.sizes[lat_name], ds.sizes[lon_name])
     ),
     coords={"time": ds["time"], lat_name: ds[lat_name], lon_name: ds[lon_name]},
@@ -385,7 +384,7 @@ cluster_da_full = xr.DataArray(
     attrs={"long_name": "sequence cluster label (per time-step)", "units": "1"},
 )
 score_da_full = xr.DataArray(
-    npx.broadcast_to(
+    np.broadcast_to(
         time_score[:, None, None], (len(times), ds.sizes[lat_name], ds.sizes[lon_name])
     ),
     coords={"time": ds["time"], lat_name: ds[lat_name], lon_name: ds[lon_name]},
@@ -424,18 +423,18 @@ if (args.probe_lat is not None) and (args.probe_lon is not None) and (not args.n
 
     # Recompose toutes les fenêtres au point
     L = wins[0][1] - wins[0][0] + 1
-    t_rel = npx.arange(L) * dt_hours
-    seq_u = npx.array([u_series[s : e + 1] for (s, e) in wins])  # (N,L)
-    seq_v = npx.array([v_series[s : e + 1] for (s, e) in wins])  # (N,L)
+    t_rel = np.arange(L) * dt_hours
+    seq_u = np.array([u_series[s : e + 1] for (s, e) in wins])  # (N,L)
+    seq_v = np.array([v_series[s : e + 1] for (s, e) in wins])  # (N,L)
 
     # Membres par cluster & médonoïdes déjà calculés
-    cluster_members = {c: npx.where(labels_seq == c)[0] for c in range(k)}
+    cluster_members = {c: np.where(labels_seq == c)[0] for c in range(k)}
 
     # Figure : lignes = clusters, colonnes = 2 (u10, v10)
     nrows, ncols = k, 2
     fig, axes = plt.subplots(nrows, ncols, figsize=(8, 2.6 * k), sharex=True)
     if k == 1:
-        axes = npx.array([axes])
+        axes = np.array([axes])
     axes = axes.reshape(k, 2)
 
     for c in range(k):

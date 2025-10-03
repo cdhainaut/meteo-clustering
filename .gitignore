@@ -1,0 +1,5 @@
+*.grib
+*.idx
+__pycache__/
+seq_grib/
+
