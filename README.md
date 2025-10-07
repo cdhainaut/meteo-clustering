@@ -114,7 +114,7 @@ meteo-probe reduced/original_with_cluster_id.grib2 \
 
 ## 🔧 Installation
 
-```
+```bash
 git clone https://github.com/<yourusername>/meteo-scenarios.git
 cd meteo-scenarios
 pip install -e .
