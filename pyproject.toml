@@ -1,5 +1,5 @@
 [project]
-name = "meteo-scenarios"
+name = "meteo-scenario"
 version = "0.1.0"
 description = "Scenario reduction & clustering for metocean fields (WASP routing/design)."
 readme = "README.md"
@@ -20,7 +20,18 @@ dtw = ["fastdtw"]
 dev = ["pytest", "ruff", "pre-commit"]
 
 [project.scripts]
-meteo-aggregate = "meteo_scenarios.cli.aggregate:main"
-meteo-reduce    = "meteo_scenarios.cli.reduce:main"
-meteo-plot-map  = "meteo_scenarios.cli.plot_map:main"
-meteo-probe     = "meteo_scenarios.cli.probe:main"
+meteo-aggregate = "meteo_scenario.cli.aggregate:main"
+meteo-reduce    = "meteo_scenario.cli.reduce:main"
+meteo-plot-map  = "meteo_scenario.cli.plot_map:main"
+meteo-probe     = "meteo_scenario.cli.probe:main"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["meteo_scenario*"]  
